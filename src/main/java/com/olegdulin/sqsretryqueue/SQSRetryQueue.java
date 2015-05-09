@@ -29,7 +29,7 @@ public class SQSRetryQueue {
 	private Regions region;
 	private int visibilityTimeout = 10;
 	private int messageReceiverThreads = 1;
-	private volatile boolean listening = false;
+	private volatile boolean listening = true;
 	private Object monitor = new Object();
 	private MessageReceiverCallable messageReceiverCallable;
 
@@ -72,11 +72,15 @@ public class SQSRetryQueue {
 
 	private void startMessageReceivers() {
 		for (int i = 0; i < this.messageReceiverThreads; i++) {
-			new Thread() {
+			String threadName = sqsQueueName + "#" + i;
+			Thread receiverThread = new Thread() {
 				public void run() {
+					Thread.currentThread().setName(threadName);
 					doReceive();
 				}
-			}.start();
+			};
+			receiverThread.setDaemon(true);
+			receiverThread.start();
 		}
 
 	}
@@ -106,9 +110,9 @@ public class SQSRetryQueue {
 				for (Message message : messages) {
 					String messageBody = message.getBody();
 					try {
-						this.messageReceiverCallable
-								.setMessageBody(messageBody);
-						if (this.messageReceiverCallable.call()) {
+						this.getMessageReceiverCallable().setMessageBody(
+								messageBody);
+						if (this.getMessageReceiverCallable().call()) {
 							DeleteMessageBatchRequestEntry entry = new DeleteMessageBatchRequestEntry(
 									UUID.randomUUID().toString(),
 									message.getReceiptHandle());
@@ -178,5 +182,14 @@ public class SQSRetryQueue {
 
 	public void stopListening() {
 		this.setListening(false);
+	}
+
+	public MessageReceiverCallable getMessageReceiverCallable() {
+		return messageReceiverCallable;
+	}
+
+	public void setMessageReceiverCallable(
+			MessageReceiverCallable messageReceiverCallable) {
+		this.messageReceiverCallable = messageReceiverCallable;
 	}
 }
