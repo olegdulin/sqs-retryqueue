@@ -104,7 +104,7 @@ public class SQSRetryQueue {
 				List<Message> messages = result.getMessages();
 				messagesReceived = messages.size() > 0;
 				if (!messagesReceived) {
-					continue;
+					break;
 				}
 				List<DeleteMessageBatchRequestEntry> deletes = new ArrayList<DeleteMessageBatchRequestEntry>();
 				for (Message message : messages) {
