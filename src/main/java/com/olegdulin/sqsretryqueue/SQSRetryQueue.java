@@ -3,6 +3,8 @@ package com.olegdulin.sqsretryqueue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.annotation.PostConstruct;
 
@@ -30,10 +32,6 @@ public class SQSRetryQueue {
 	private volatile boolean listening = false;
 	private Object monitor = new Object();
 	private MessageReceiverCallable messageReceiverCallable;
-
-	public SQSRetryQueue() {
-
-	}
 
 	public String getSqsQueueName() {
 		return sqsQueueName;
@@ -117,7 +115,9 @@ public class SQSRetryQueue {
 							deletes.add(entry);
 						}
 					} catch (Throwable exp) {
-						// TODO Need to log the error somehow
+						Logger.getLogger(getSqsQueueName()).log(Level.WARNING,
+								"Could not process message: " + messageBody,
+								exp);
 					}
 				}
 				if (!deletes.isEmpty()) {
