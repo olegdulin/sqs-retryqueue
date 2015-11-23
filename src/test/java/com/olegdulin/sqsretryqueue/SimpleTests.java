@@ -24,26 +24,20 @@ public class SimpleTests {
 		srq.startListening();
 		ConcurrentHashMap<String, Boolean> messageStatus = new ConcurrentHashMap<>();
 		ConcurrentHashMap<String, Boolean> retries = new ConcurrentHashMap<>();
-		srq.setMessageReceiverCallable(new MessageReceiverCallable() {
-
-			@Override
-			public Boolean call() throws Exception {
-				String messageBody = getMessageBody();
-				if (!retries.containsKey(messageBody)) {
-					retries.put(messageBody, true);
-					throw new Exception();
-				}
-				messageStatus.put(messageBody, true);
-				return true;
+		srq.setMessageConsumer((String messageBody) -> {
+			if (!retries.containsKey(messageBody)) {
+				retries.put(messageBody, true);
+				throw new RuntimeException();
 			}
+			messageStatus.put(messageBody, true);
 		});
+
 		for (int i = 0; i < 10; i++) {
 			String messageBody = "message #" + i;
 			messageStatus.put(messageBody, false);
 			srq.sendMessage(messageBody);
 		}
-		Logger.getLogger(getClass().getName()).info(
-				"Waiting for things to settle down");
+		Logger.getLogger(getClass().getName()).info("Waiting for things to settle down");
 		Thread.sleep(30 * 1000);
 		for (Entry<String, Boolean> entry : messageStatus.entrySet()) {
 			if (!entry.getValue()) {
@@ -62,22 +56,16 @@ public class SimpleTests {
 		srq.init();
 		srq.startListening();
 		ConcurrentHashMap<String, Boolean> messageStatus = new ConcurrentHashMap<>();
-		srq.setMessageReceiverCallable(new MessageReceiverCallable() {
-
-			@Override
-			public Boolean call() throws Exception {
-				String messageBody = getMessageBody();
-				messageStatus.put(messageBody, true);
-				return true;
-			}
+		srq.setMessageConsumer((String messageBody) -> {
+			messageStatus.put(messageBody, true);
 		});
+
 		for (int i = 0; i < 10; i++) {
 			String messageBody = "message #" + i;
 			messageStatus.put(messageBody, false);
 			srq.sendMessage(messageBody);
 		}
-		Logger.getLogger(getClass().getName()).info(
-				"Waiting for things to settle down");
+		Logger.getLogger(getClass().getName()).info("Waiting for things to settle down");
 		Thread.sleep(srq.getVisibilityTimeout() * 1000);
 		for (Entry<String, Boolean> entry : messageStatus.entrySet()) {
 			if (!entry.getValue()) {

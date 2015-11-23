@@ -3,6 +3,7 @@ package com.olegdulin.sqsretryqueue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -31,7 +32,7 @@ public class SQSRetryQueue {
 	private int messageReceiverThreads = 1;
 	private volatile boolean listening = true;
 	private Object monitor = new Object();
-	private MessageReceiverCallable messageReceiverCallable;
+	private Consumer<String> messageConsumer;
 
 	public String getSqsQueueName() {
 		return sqsQueueName;
@@ -55,17 +56,14 @@ public class SQSRetryQueue {
 		this.sqs.configureRegion(region);
 		try {
 			// Check to see if queue exists
-			GetQueueUrlResult queueUrlResult = this.sqs
-					.getQueueUrl(getSqsQueueName());
+			GetQueueUrlResult queueUrlResult = this.sqs.getQueueUrl(getSqsQueueName());
 			this.queueUrl = queueUrlResult.getQueueUrl();
 		} catch (QueueDoesNotExistException queueDoesNotExist) {
 			// Queue does not exist, need to create one
 			CreateQueueRequest createQueueRequest = new CreateQueueRequest();
 			createQueueRequest.setQueueName(getSqsQueueName());
-			createQueueRequest.addAttributesEntry("VisibilityTimeout", ""
-					+ getVisibilityTimeout());
-			CreateQueueResult createQueueResult = this.sqs
-					.createQueue(createQueueRequest);
+			createQueueRequest.addAttributesEntry("VisibilityTimeout", "" + getVisibilityTimeout());
+			CreateQueueResult createQueueResult = this.sqs.createQueue(createQueueRequest);
 			this.queueUrl = createQueueResult.getQueueUrl();
 		}
 	}
@@ -97,9 +95,8 @@ public class SQSRetryQueue {
 			}
 			boolean messagesReceived = false;
 			do {
-				ReceiveMessageRequest request = new ReceiveMessageRequest()
-						.withQueueUrl(this.queueUrl).withWaitTimeSeconds(1)
-						.withMaxNumberOfMessages(10);
+				ReceiveMessageRequest request = new ReceiveMessageRequest().withQueueUrl(this.queueUrl)
+						.withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
 				ReceiveMessageResult result = sqs.receiveMessage(request);
 				List<Message> messages = result.getMessages();
 				messagesReceived = messages.size() > 0;
@@ -110,23 +107,17 @@ public class SQSRetryQueue {
 				for (Message message : messages) {
 					String messageBody = message.getBody();
 					try {
-						this.getMessageReceiverCallable().setMessageBody(
-								messageBody);
-						if (this.getMessageReceiverCallable().call()) {
-							DeleteMessageBatchRequestEntry entry = new DeleteMessageBatchRequestEntry(
-									UUID.randomUUID().toString(),
-									message.getReceiptHandle());
-							deletes.add(entry);
-						}
+						this.messageConsumer.accept(messageBody);
+						DeleteMessageBatchRequestEntry entry = new DeleteMessageBatchRequestEntry(
+								UUID.randomUUID().toString(), message.getReceiptHandle());
+						deletes.add(entry);
 					} catch (Throwable exp) {
 						Logger.getLogger(getSqsQueueName()).log(Level.WARNING,
-								"Could not process message: " + messageBody,
-								exp);
+								"Could not process message: " + messageBody, exp);
 					}
 				}
 				if (!deletes.isEmpty()) {
-					DeleteMessageBatchRequest deleteBatch = new DeleteMessageBatchRequest(
-							this.queueUrl, deletes);
+					DeleteMessageBatchRequest deleteBatch = new DeleteMessageBatchRequest(this.queueUrl, deletes);
 					sqs.deleteMessageBatch(deleteBatch);
 				}
 			} while (messagesReceived);
@@ -135,8 +126,7 @@ public class SQSRetryQueue {
 	}
 
 	public void sendMessage(String messageBody) {
-		SendMessageRequest smr = new SendMessageRequest().withQueueUrl(
-				this.queueUrl).withMessageBody(messageBody);
+		SendMessageRequest smr = new SendMessageRequest().withQueueUrl(this.queueUrl).withMessageBody(messageBody);
 		this.sqs.sendMessage(smr);
 
 		synchronized (monitor) {
@@ -184,12 +174,11 @@ public class SQSRetryQueue {
 		this.setListening(false);
 	}
 
-	public MessageReceiverCallable getMessageReceiverCallable() {
-		return messageReceiverCallable;
+	public Consumer<String> getMessageConsumer() {
+		return messageConsumer;
 	}
 
-	public void setMessageReceiverCallable(
-			MessageReceiverCallable messageReceiverCallable) {
-		this.messageReceiverCallable = messageReceiverCallable;
+	public void setMessageConsumer(Consumer<String> consumer) {
+		this.messageConsumer = consumer;
 	}
 }
